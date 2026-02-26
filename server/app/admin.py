@@ -1,7 +1,7 @@
 import os
 from fastapi import UploadFile
 from .config import UPLOAD_DIR
-from preprocess import process_module
+from .preprocess import process_module
 from .catalog import add_module
 from .loader import preload_chunks
 
