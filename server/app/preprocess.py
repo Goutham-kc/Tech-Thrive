@@ -1,7 +1,7 @@
 import os
 import brotli
-from app.config import CHUNK_SIZE, CHUNK_DIR
-from app.catalog import get_next_module_id
+from .config import CHUNK_SIZE, CHUNK_DIR
+from .catalog import get_next_module_id
 
 
 def process_module(path):
