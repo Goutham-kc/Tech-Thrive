@@ -18,15 +18,8 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 # Session settings — 15 minutes gives enough headroom for large multi-chunk downloads
 SESSION_TTL = 900  # seconds
 
-# Compression
-BROTLI_QUALITY = 6
+# Compression — gzip level (1=fast, 9=best)
+GZIP_LEVEL = 6
 
 # Security
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "change-this-before-deploy")
-
-if ADMIN_SECRET == "change-this-before-deploy":
-    warnings.warn(
-        "⚠️  ADMIN_SECRET is using the insecure default value. "
-        "Set the ADMIN_SECRET environment variable before deploying.",
-        stacklevel=2,
-    )
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "kc")

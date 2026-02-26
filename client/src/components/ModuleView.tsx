@@ -77,25 +77,11 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
             setTotalChunks(targetModule.chunk_count);
 
             // targetIndex is the 0-based position in the ordered catalog array.
-            // This is what the PIR vectors encode — NOT the database id.
             const targetIndex = modules.indexOf(targetModule);
             const recoveredChunks: Uint8Array[] = [];
 
             for (let chunkIndex = 0; chunkIndex < targetModule.chunk_count; chunkIndex++) {
-                /**
-                 * PIR: generate fresh k=3 vectors for every chunk.
-                 *
-                 * v0, v1 ← U(Z_256^n)
-                 * v2[i]  = (e_t[i] - v0[i] - v1[i]) mod 256
-                 *
-                 * The server computes r_k = v_k · M  (mod 256) for each vector.
-                 * Client recovers m_t = r0 + r1 + r2  (mod 256) = e_t · M = m_t.
-                 *
-                 * Any individual v_k is statistically uniform over Z_256^n,
-                 * so the server learns zero information about targetIndex per request.
-                 */
                 const vectors = generateVectors(targetIndex, nModules);
-
                 const data = await sendKpir({
                     token: sessionToken,
                     vectors: [
@@ -109,6 +95,7 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
                 const responses: Uint8Array[] = data.responses.map(
                     (r: number[]) => new Uint8Array(r)
                 );
+
                 recoveredChunks.push(recoverChunk(responses));
                 setProgress(chunkIndex + 1);
             }
@@ -125,19 +112,15 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
             const trimmed = full.slice(0, targetModule.compressed_size);
 
             // Validate compression header before attempting decompression
-            const isBrotli = trimmed[0] === 0xCE || (trimmed[0] >= 0x80 && trimmed[0] <= 0xFF && trimmed[1] !== 0x8B);
-            const isGzip   = trimmed[0] === 0x1F && trimmed[1] === 0x8B;
-            console.log(`[decomp] first bytes: ${trimmed[0]} ${trimmed[1]}, isGzip=${isGzip}, compressed_size=${targetModule.compressed_size}, full_len=${full.length}`);
+            const isGzip = trimmed[0] === 0x1F && trimmed[1] === 0x8B;
 
             if (!isGzip) {
                 throw new Error(
-                    `Compressed data header invalid: first bytes are ${trimmed[0]} ${trimmed[1]}. ` +
-                    `Expected gzip (0x1F 0x8B). The module was likely uploaded before the gzip migration. ` +
-                    `Please delete and re-upload this module in the Admin panel.`
+                    `Compressed data header invalid. Expected gzip (0x1F 0x8B).`
                 );
             }
 
-            // Decompress using native DecompressionStream — gzip is supported in all browsers
+            // Decompress using native DecompressionStream
             const ds = new DecompressionStream('gzip');
             const writer = ds.writable.getWriter();
             writer.write(trimmed);
@@ -178,7 +161,6 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
         <div style={{ fontFamily: "'DM Sans', sans-serif" }} className="min-h-screen bg-stone-50">
             <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@300;400&display=swap');`}</style>
 
-            {/* Top bar */}
             <div className="bg-white border-b border-stone-100 px-6 py-3.5 flex items-center justify-between">
                 <button onClick={onBack}
                         className="flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-600 transition-colors">
@@ -197,7 +179,6 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
             </div>
 
             <div className="max-w-4xl mx-auto p-8">
-
                 {(downloadState === 'downloading' || downloadState === 'decompressing') && (
                     <div className="flex flex-col items-center justify-center py-24 gap-6">
                         <div className="w-full max-w-sm">

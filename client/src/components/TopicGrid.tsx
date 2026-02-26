@@ -4,8 +4,10 @@ import {
     getUnlockedModuleIds,
     seedFirstModule,
     saveCatalog,
+    getAllProgress,
     PASS_THRESHOLD,
 } from '../lib/idb-store';
+import type { Profile } from '../types';
 
 interface TopicGridProps {
     onSelectModule: (moduleId: string) => void;
@@ -48,6 +50,8 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [filter, setFilter] = useState<string>('all');
+    const [overallMastery, setOverallMastery] = useState(0);
+    const [totalQuizzes, setTotalQuizzes] = useState(0);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -70,6 +74,18 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
 
             setCatalog(modules);
             setUnlockedIds(unlocked);
+
+            // Derive mastery and quiz count from real idb progress — no external lib needed
+            const allProgress = await getAllProgress();
+            const quizCount = allProgress.length;
+            const mastery = allProgress.length > 0
+                ? Math.round(
+                    (allProgress.reduce((s, p) => s + p.correct, 0) /
+                     allProgress.reduce((s, p) => s + p.total, 0)) * 100
+                  )
+                : 0;
+            setOverallMastery(mastery);
+            setTotalQuizzes(quizCount);
         } catch (e: any) {
             setError('Could not reach server. Showing offline data.');
             // Fall back to locally cached catalog
@@ -109,6 +125,33 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
     return (
         <div style={{ fontFamily: "'DM Sans', sans-serif" }} className="p-8 max-w-5xl mx-auto">
             <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@300;400&display=swap');`}</style>
+
+            {/* ── Stats strip ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+                {[
+                    { value: unlockedCount, label: 'Unlocked', sub: `of ${totalCount}` },
+                    { value: totalCount - unlockedCount, label: 'Locked', sub: 'modules' },
+                    { value: `${overallMastery}%`, label: 'Mastery', sub: 'overall' },
+                    { value: totalQuizzes, label: 'Quizzes', sub: 'taken' },
+                ].map((s, i) => (
+                    <div key={i} style={{ fontFamily: "'DM Sans', sans-serif" }}
+                         className={`rounded-2xl border px-5 py-4 flex flex-col gap-1 ${
+                             i === 0 ? 'bg-stone-900 border-stone-900' : 'bg-white border-stone-100'
+                         }`}>
+                        <span style={{ fontFamily: "'DM Mono', monospace" }}
+                              className={`text-2xl font-light ${i === 0 ? 'text-white' : 'text-stone-900'}`}>
+                            {s.value}
+                        </span>
+                        <span className={`text-xs font-medium uppercase tracking-widest ${i === 0 ? 'text-stone-400' : 'text-stone-500'}`}>
+                            {s.label}
+                        </span>
+                        <span style={{ fontFamily: "'DM Mono', monospace" }}
+                              className={`text-xs ${i === 0 ? 'text-stone-600' : 'text-stone-300'}`}>
+                            {s.sub}
+                        </span>
+                    </div>
+                ))}
+            </div>
 
             {/* Header */}
             <div className="mb-8 flex items-end justify-between">

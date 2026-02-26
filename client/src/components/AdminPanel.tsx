@@ -363,9 +363,9 @@ function QuizTab({ adminKey }: { adminKey: string }) {
     const [modules, setModules] = useState<Module[]>([]);
     const [selectedModule, setSelectedModule] = useState<Module | null>(null);
     const [existingQuestions, setExistingQuestions] = useState<any[]>([]);
-    const [questions, setQuestions] = useState<Question[]>(Array.from({ length: 9 }, EMPTY_QUESTION));
+    const [questions, setQuestions] = useState<Question[]>(Array.from({ length: 5 }, EMPTY_QUESTION));
     const [saving, setSaving] = useState(false);
-    const [saveResults, setSaveResults] = useState<('idle' | 'ok' | 'err')[]>(Array(9).fill('idle'));
+    const [saveResults, setSaveResults] = useState<('idle' | 'ok' | 'err')[]>(Array(5).fill('idle'));
     const [done, setDone] = useState(false);
     const [error, setError] = useState('');
 
@@ -405,7 +405,7 @@ function QuizTab({ adminKey }: { adminKey: string }) {
         setSaving(true);
         setDone(false);
         setError('');
-        const results: ('idle' | 'ok' | 'err')[] = Array(9).fill('idle');
+        const results: ('idle' | 'ok' | 'err')[] = Array(5).fill('idle');
 
         for (let i = 0; i < questions.length; i++) {
             const q = questions[i];
@@ -467,7 +467,7 @@ function QuizTab({ adminKey }: { adminKey: string }) {
         <div className="flex flex-col h-full">
             {/* Sub-header */}
             <div className="px-6 py-3 border-b border-stone-100 flex items-center gap-2">
-                <button onClick={() => { setSelectedModule(null); setDone(false); setSaveResults(Array(9).fill('idle')); }}
+                <button onClick={() => { setSelectedModule(null); setDone(false); setSaveResults(Array(5).fill('idle')); }}
                         className="text-xs text-stone-400 hover:text-stone-600 transition-colors flex items-center gap-1">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                         <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -508,7 +508,7 @@ function QuizTab({ adminKey }: { adminKey: string }) {
 
                 {/* New questions */}
                 <div>
-                    <p className="text-xs font-medium text-stone-400 uppercase tracking-widest mb-4">Add up to 9 questions</p>
+                    <p className="text-xs font-medium text-stone-400 uppercase tracking-widest mb-4">Add up to 5 questions</p>
                     <div className="space-y-6">
                         {questions.map((q, i) => (
                             <div key={i} className="bg-stone-50 rounded-2xl border border-stone-100 p-5">
