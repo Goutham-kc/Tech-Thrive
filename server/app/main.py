@@ -1,3 +1,4 @@
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
@@ -16,24 +17,14 @@ MOCK_DATA = {
 }
 # --------------------------------------
 
-class KpirRequest(BaseModel):
-    subset_ids: list[int]
-    masked_vector: list[int]
-    chunk_index: int
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/catalog")
 def get_catalog():
     return {"modules": list(MOCK_DATA.keys())}
-
-
-@app.post("/kpir")
-def kpir(request: KpirRequest):
-    matrix = []
-
-    for module_id in request.subset_ids:
-        matrix.append(MOCK_DATA[module_id][request.chunk_index])
-
-    result = compute_masked_dot(request.masked_vector, matrix)
-
-    return {"data": result}
