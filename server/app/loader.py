@@ -1,33 +1,48 @@
 import os
 from .config import CHUNK_DIR
 
-CHUNKS = {}
+# module_id (int) -> chunk_index (int) -> raw bytes
+CHUNKS: dict[int, dict[int, bytes]] = {}
 
 
-def preload_chunks():
+def preload_chunks() -> None:
     global CHUNKS
     CHUNKS = {}
 
     if not os.path.exists(CHUNK_DIR):
         return
 
-    for module_id in os.listdir(CHUNK_DIR):
-        module_path = os.path.join(CHUNK_DIR, module_id)
+    for module_id_str in os.listdir(CHUNK_DIR):
+        module_path = os.path.join(CHUNK_DIR, module_id_str)
 
         if not os.path.isdir(module_path):
             continue
 
-        CHUNKS[int(module_id)] = {}
+        try:
+            module_id = int(module_id_str)
+        except ValueError:
+            continue
+
+        CHUNKS[module_id] = {}
 
         for file in os.listdir(module_path):
             if not file.endswith(".bin"):
                 continue
 
-            chunk_index = int(file.replace(".bin", ""))
+            try:
+                chunk_index = int(file[:-4])  # strip ".bin"
+            except ValueError:
+                continue
+
             file_path = os.path.join(module_path, file)
 
             with open(file_path, "rb") as f:
-                CHUNKS[int(module_id)][chunk_index] = list(f.read())
+                CHUNKS[module_id][chunk_index] = f.read()  # store as bytes, not list
 
 
 preload_chunks()
+
+
+def get_chunks() -> dict[int, dict[int, bytes]]:
+    """Always returns the current CHUNKS dict."""
+    return CHUNKS

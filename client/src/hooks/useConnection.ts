@@ -8,31 +8,33 @@ interface ConnectionState {
 export function useConnection(): ConnectionState {
     const [online, setOnline] = useState<boolean>(navigator.onLine);
     const [type, setType] = useState<string>('unknown');
-    
+
     useEffect(() => {
         const handleOnline = () => setOnline(true);
         const handleOffline = () => setOnline(false);
-        
+
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-        
+
+        let conn: any = null;
+        let handleChange: (() => void) | null = null;
+
         if ('connection' in navigator) {
-            const conn = (navigator as any).connection;
+            conn = (navigator as any).connection;
             setType(conn.effectiveType);
-            
-            const handleChange = () => setType(conn.effectiveType);
+            handleChange = () => setType(conn.effectiveType);
             conn.addEventListener('change', handleChange);
-            
-            return () => {
-                conn.removeEventListener('change', handleChange);
-            };
         }
-        
+
+        // Single cleanup function always removes all listeners
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
+            if (conn && handleChange) {
+                conn.removeEventListener('change', handleChange);
+            }
         };
     }, []);
-    
+
     return { online, type };
 }

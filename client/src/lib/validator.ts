@@ -9,7 +9,7 @@ const mockServerMatrix = Array.from({ length: N_MODULES }, (_, i) => {
     return new Uint8Array(CHUNK_SIZE).fill(i + 10);
 });
 
-// Server simulation — now correctly in Z_256
+// Server simulation — correctly in Z_256
 const computeResponse = (v: Uint8Array): Uint8Array => {
     const response = new Uint8Array(CHUNK_SIZE);
 
@@ -25,7 +25,8 @@ const computeResponse = (v: Uint8Array): Uint8Array => {
 };
 
 function verifyVectors(targetIndex: number): void {
-    const [v0, v1, v2] = generateVectors(targetIndex);
+    // Pass N_MODULES so generateVectors sizes vectors correctly
+    const [v0, v1, v2] = generateVectors(targetIndex, N_MODULES);
 
     for (let i = 0; i < N_MODULES; i++) {
         const sum = (v0[i] + v1[i] + v2[i]) % 256;
@@ -42,7 +43,8 @@ function verifyVectors(targetIndex: number): void {
 async function runTest(targetModuleIndex: number) {
     console.log(`--- Testing PIR for Module Index: ${targetModuleIndex} ---`);
 
-    const [v0, v1, v2] = generateVectors(targetModuleIndex);
+    // Pass N_MODULES so generateVectors sizes vectors correctly
+    const [v0, v1, v2] = generateVectors(targetModuleIndex, N_MODULES);
 
     const r0 = computeResponse(v0);
     const r1 = computeResponse(v1);
@@ -63,12 +65,12 @@ async function runTest(targetModuleIndex: number) {
 }
 
 // Test all module indices
-const start = performance.now()
+const start = performance.now();
 
 for (let i = 0; i < N_MODULES; i++) {
-    verifyVectors(i)
-    await runTest(i)
+    verifyVectors(i);
+    await runTest(i);
 }
 
-const elapsed = performance.now() - start
-console.log(`\nAll 20 modules verified in ${elapsed.toFixed(2)}ms`)
+const elapsed = performance.now() - start;
+console.log(`\nAll ${N_MODULES} modules verified in ${elapsed.toFixed(2)}ms`);

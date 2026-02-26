@@ -9,6 +9,8 @@ export interface Profile {
 export interface Progress {
     id?: number;
     moduleId: string;
+    topic: string;       // topic the module belongs to
+    tier: number;        // tier of the module attempted
     correct: number;
     total: number;
     passed: boolean;
@@ -32,6 +34,16 @@ export interface Module {
     title: string;
     content?: any;
     downloadedAt: number;
+}
+
+/**
+ * Persisted per-topic tier unlock.
+ * unlockedTier is the highest tier the user has earned for this topic.
+ * Every topic defaults to tier 1 (no record = tier 1 accessible).
+ */
+export interface TopicUnlock {
+    topic: string;       // keyPath
+    unlockedTier: number;
 }
 
 export interface StorageStats {
