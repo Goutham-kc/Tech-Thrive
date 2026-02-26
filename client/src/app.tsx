@@ -1,14 +1,23 @@
-import { useState } from 'preact/hooks'
-import preactLogo from './assets/preact.svg'
-import viteLogo from '/vite.svg'
-import './app.css'
+import { useEffect, useState } from "preact/hooks";
+import { fetchCatalog } from "./lib/api";
 
 export default function App() {
+  const [modules, setModules] = useState<number[]>([]);
+
+  useEffect(() => {
+    fetchCatalog().then(data => {
+      setModules(data.modules);
+    });
+  }, []);
+
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
-      <h1 className="text-4xl font-bold text-green-400">
-        GhostLearn Running 🚀
-      </h1>
+    <div className="min-h-screen bg-black text-white p-8">
+      <h1 className="text-2xl mb-4">Catalog</h1>
+      <ul>
+        {modules.map(id => (
+          <li key={id}>Module {id}</li>
+        ))}
+      </ul>
     </div>
-  )
+  );
 }
