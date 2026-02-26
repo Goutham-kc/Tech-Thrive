@@ -1,16 +1,65 @@
-annotated-doc==0.0.4
-annotated-types==0.7.0
-anyio==4.12.1
-brotli==1.2.0
-click==8.3.1
-colorama==0.4.6
-fastapi==0.133.1
-h11==0.16.0
-idna==3.11
-numpy==2.4.2
-pydantic==2.12.5
-pydantic_core==2.41.5
-starlette==0.52.1
-typing-inspection==0.4.2
-typing_extensions==4.15.0
-uvicorn==0.41.0
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from .catalog import init_db, get_bucket
+from .session import create_session
+from .kpir import compute_masked_dot
+from .loader import CHUNKS
+from .admin import handle_upload
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+init_db()
+
+class SessionRequest(BaseModel):
+    ghost_id: str
+
+class KpirRequest(BaseModel):
+    subset_ids: list[int]
+    masked_vector: list[int]
+    chunk_index: int
+
+@app.post("/session")
+def session(request: SessionRequest):
+    token = create_session(request.ghost_id)
+    return {"token": token}
+
+@app.get("/catalog")
+def catalog(topic: str = None, tier: int = None):
+    modules = get_bucket(topic, tier)
+    return {"modules": modules}
+
+@app.post("/kpir")
+def kpir(request: KpirRequest):
+    matrix = []
+
+    for module_id in request.subset_ids:
+        matrix.append(
+            CHUNKS[module_id][request.chunk_index]
+        )
+
+    result = compute_masked_dot(
+        request.masked_vector,
+        matrix
+    )
+
+    return {"data": result}
+
+@app.post("/admin/upload")
+async def upload_module(
+    title: str = Form(...),
+    topic: str = Form(...),
+    tier: int = Form(...),
+    file: UploadFile = File(...)
+):
+    module_id = handle_upload(file, title, topic, tier)
+    return {"status": "uploaded", "module_id": module_id}
