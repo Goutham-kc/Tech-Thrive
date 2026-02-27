@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { getModule, saveModule } from '../lib/idb-store';
+import { getModule, saveModule, saveChunk, getChunk, getDownloadedChunkCount, clearChunks } from '../lib/idb-store';
 import { fetchCatalog, sendKpir } from '../lib/api';
 import { generateVectors, recoverChunk } from '../lib/kpir';
 import type { Module } from '../types';
@@ -78,9 +78,17 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
 
             // targetIndex is the 0-based position in the ordered catalog array.
             const targetIndex = modules.indexOf(targetModule);
-            const recoveredChunks: Uint8Array[] = [];
+            const totalChunks = targetModule.chunk_count;
 
-            for (let chunkIndex = 0; chunkIndex < targetModule.chunk_count; chunkIndex++) {
+            // Check how many chunks we already have — resume from there
+            const alreadyDownloaded = await getDownloadedChunkCount(String(moduleId));
+            const resumeFrom = alreadyDownloaded < totalChunks ? alreadyDownloaded : 0;
+
+            if (resumeFrom > 0) {
+                setProgress(resumeFrom);
+            }
+
+            for (let chunkIndex = resumeFrom; chunkIndex < totalChunks; chunkIndex++) {
                 const vectors = generateVectors(targetIndex, nModules);
                 const data = await sendKpir({
                     token: sessionToken,
@@ -96,8 +104,17 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
                     (r: number[]) => new Uint8Array(r)
                 );
 
-                recoveredChunks.push(recoverChunk(responses));
+                const recovered = recoverChunk(responses);
+                await saveChunk(String(moduleId), chunkIndex, recovered);
                 setProgress(chunkIndex + 1);
+            }
+
+            // Reassemble all chunks from IDB in order
+            const recoveredChunks: Uint8Array[] = [];
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = await getChunk(String(moduleId), i);
+                if (!chunk) throw new Error(`Missing chunk ${i} after download`);
+                recoveredChunks.push(chunk);
             }
 
             setDownloadState('decompressing');
@@ -141,12 +158,15 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
             setMimeType(mime);
             setFileUrl(URL.createObjectURL(new Blob([decompressed], { type: mime })));
 
-            // Cache to IndexedDB
+            // Cache full decompressed module to IndexedDB
             await saveModule({
                 ...targetModule,
                 id: moduleId,
                 fileData: Array.from(decompressed),
             } as any);
+
+            // Clear the raw chunk cache now that the full module is saved
+            await clearChunks(String(moduleId));
 
             setDownloadState('ready');
         } catch (err: any) {
@@ -196,7 +216,9 @@ export function ModuleView({ moduleId, sessionToken, onBack, onStartQuiz }: Modu
                             </div>
                             <p className="text-xs text-stone-300 mt-3 text-center">
                                 {downloadState === 'downloading'
-                                    ? 'Fetching via PIR — server cannot see which module'
+                                    ? progress > 0 && progress === totalChunks
+                                        ? 'Resuming download…'
+                                        : 'Fetching via PIR — server cannot see which module'
                                     : 'Almost done…'}
                             </p>
                         </div>

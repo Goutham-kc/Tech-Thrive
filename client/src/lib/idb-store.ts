@@ -302,7 +302,44 @@ export async function getWeakModules(): Promise<WeakModule[]> {
     return all.filter(w => !w.resolvedAt);
 }
 
-// ============ STORAGE STATS ============
+// ============ CHUNK RESUME ============
+
+function chunkKey(moduleId: string, chunkIndex: number): string {
+    return `${moduleId}:${chunkIndex}`;
+}
+
+export async function saveChunk(moduleId: string, chunkIndex: number, data: Uint8Array): Promise<void> {
+    const db = await getDB();
+    await db.put('chunks', {
+        key: chunkKey(moduleId, chunkIndex),
+        moduleId,
+        chunkIndex,
+        data: Array.from(data),
+        timestamp: Date.now(),
+    });
+}
+
+export async function getChunk(moduleId: string, chunkIndex: number): Promise<Uint8Array | null> {
+    const db = await getDB();
+    const entry = await db.get('chunks', chunkKey(moduleId, chunkIndex));
+    return entry ? new Uint8Array(entry.data) : null;
+}
+
+export async function getDownloadedChunkCount(moduleId: string): Promise<number> {
+    const db = await getDB();
+    const all = await db.transaction('chunks').store.index('moduleId').getAll(moduleId);
+    return all.length;
+}
+
+export async function clearChunks(moduleId: string): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction('chunks', 'readwrite');
+    const keys = await tx.store.index('moduleId').getAllKeys(moduleId);
+    await Promise.all(keys.map(k => tx.store.delete(k)));
+    await tx.done;
+}
+
+
 
 export async function getStorageStats(): Promise<StorageStats> {
     const db = await getDB();
