@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { fetchCatalog } from '../lib/api';
 import {
     getUnlockedModuleIds,
-    seedFirstModule,
     saveCatalog,
     getAllProgress,
     PASS_THRESHOLD,
@@ -65,11 +64,6 @@ export function TopicGrid({ profileId, onSelectModule, refreshKey = 0 }: TopicGr
 
             // Persist catalog locally so ModuleView can use it offline
             await saveCatalog(modules);
-
-            // Ensure the first module is always unlocked for new users
-            if (modules.length > 0) {
-                await seedFirstModule(profileId, String(modules[0].id));
-            }
 
             const unlocked = await getUnlockedModuleIds(profileId);
 

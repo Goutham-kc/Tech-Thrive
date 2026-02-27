@@ -7,6 +7,17 @@ interface StatusBarProps {
     onLogout: () => void;
 }
 
+function downloadKey(profile: Profile) {
+    const key = { ghostID: profile.ghostID, username: profile.username, createdAt: profile.createdAt };
+    const blob = new Blob([JSON.stringify(key, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ghostlearn-key-${profile.username}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 export function StatusBar({ profile, onOpenDemo, onLogout }: StatusBarProps) {
     const { online, type } = useConnection();
 
@@ -49,6 +60,16 @@ export function StatusBar({ profile, onOpenDemo, onLogout }: StatusBarProps) {
                     <span className="text-stone-200">·</span>
                     <span className="text-xs text-stone-300 font-light">{profile.ghostID.substring(0, 8)}</span>
                 </div>
+
+                <button
+                    onClick={() => downloadKey(profile)}
+                    title="Download privacy key"
+                    className="text-stone-300 hover:text-stone-500 transition-colors"
+                >
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                        <path d="M7 2v7M4 7l3 3 3-3M2 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                </button>
 
                 <div className="w-px h-3.5 bg-stone-100" />
 

@@ -58,22 +58,15 @@ export function PlacementQuiz({ profileId, questions, catalog, onComplete }: Pla
                 perModule[a.moduleId].correct += a.correct ? 1 : 0;
             }
 
-            // Unlock modules the user did NOT get 100% on — those need study.
-            // Modules with a perfect score are already mastered and stay locked
-            // (they can be unlocked later by passing the previous module's quiz).
+            // Unlock only modules where the user got at least one answer wrong —
+            // those are the ones they need to study.
+            // Modules scored 100% are already mastered and stay locked.
+            // Modules with no placement questions are NOT auto-unlocked;
+            // they follow normal progression (pass previous quiz to unlock).
             const toUnlock: string[] = [];
             for (const [moduleId, score] of Object.entries(perModule)) {
-                if (score.total === 0 || score.correct < score.total) {
+                if (score.correct < score.total) {
                     toUnlock.push(String(moduleId));
-                }
-            }
-
-            // Modules with no placement questions couldn't be tested — unlock them too
-            const testedModuleIds = new Set(Object.keys(perModule));
-            for (const m of catalog) {
-                const id = String(m.id);
-                if (!testedModuleIds.has(id) && !toUnlock.includes(id)) {
-                    toUnlock.push(id);
                 }
             }
 
@@ -81,13 +74,6 @@ export function PlacementQuiz({ profileId, questions, catalog, onComplete }: Pla
             const masteredCount = Object.values(perModule).filter(
                 s => s.total > 0 && s.correct === s.total
             ).length;
-
-            // Module 1 (first in catalog) is always unlocked regardless
-            if (catalog.length > 0) {
-                const firstId = String(catalog[0].id);
-                await seedFirstModule(profileId, firstId);
-                if (!toUnlock.includes(firstId)) toUnlock.push(firstId);
-            }
 
             if (toUnlock.length > 0) {
                 await unlockModules(profileId, toUnlock);
@@ -158,6 +144,17 @@ export function PlacementQuiz({ profileId, questions, catalog, onComplete }: Pla
                         <div className="mb-6 px-4 py-3 bg-stone-50 border border-stone-100 rounded-2xl text-left">
                             <p className="text-sm text-stone-500">
                                 All modules are unlocked — work through them at your own pace.
+                            </p>
+                        </div>
+                    )}
+
+                    {toStudyCount === 0 && (
+                        <div className="mb-6 px-4 py-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-left">
+                            <p className="text-xs font-medium text-emerald-500 uppercase tracking-widest mb-1">
+                                Perfect score
+                            </p>
+                            <p className="text-sm text-emerald-800">
+                                You aced every question — all modules are already mastered. Nothing to unlock.
                             </p>
                         </div>
                     )}
