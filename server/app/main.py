@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from pydantic import BaseModel
 
@@ -19,7 +20,41 @@ from .kpir import ByteKpirEngine
 
 app = FastAPI()
 
+
+class TruncateIPMiddleware(BaseHTTPMiddleware):
+    """
+    Truncates the client IP before it can reach any route handler or logger.
+
+    IPv4 — zeroes the last octet:      192.168.1.55  → 192.168.1.0
+    IPv6 — keeps the first 3 groups:   2001:db8:85a3::8a2e  → 2001:db8:85a3::
+
+    This is data minimisation, not anonymisation. Render/Vercel edge logs
+    still capture the full IP upstream; this only affects what your app sees.
+    """
+    @staticmethod
+    def _truncate(ip: str) -> str:
+        if not ip:
+            return ip
+        if ":" in ip:
+            # IPv6 — keep first 3 groups, blank the rest
+            groups = ip.split(":")
+            return ":".join(groups[:3]) + "::"
+        else:
+            # IPv4 — zero out the last octet
+            parts = ip.split(".")
+            if len(parts) == 4:
+                return f"{parts[0]}.{parts[1]}.{parts[2]}.0"
+        return ip
+
+    async def dispatch(self, request: Request, call_next):
+        if request.client:
+            truncated = self._truncate(request.client.host)
+            request.scope["client"] = (truncated, request.client.port)
+        return await call_next(request)
+
+
 # NOTE: Restrict allow_origins to your frontend domain in production.
+app.add_middleware(TruncateIPMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -78,7 +113,7 @@ def session(request: SessionRequest):
 
 
 @app.get("/catalog")
-def catalog(topic: str = None, tier: int = None):
+def catalog(request: Request, topic: str = None, tier: int = None):
     """
     Returns modules that are both in the DB *and* have chunks loaded in memory.
 
@@ -87,8 +122,9 @@ def catalog(topic: str = None, tier: int = None):
     vectors of the wrong length and every /kpir call would fail with a 400.
     Filtering here keeps the two sources of truth permanently in sync.
     """
+    print(f"Client IP: {request.client.host}")  # will show truncated IP — remove after testing
     chunks = loader.get_chunks()
-    loaded_ids = set(chunks.keys())          # int IDs matching the DB id column
+    loaded_ids = set(chunks.keys())
     all_modules = get_bucket(topic, tier)
     modules = [m for m in all_modules if m["id"] in loaded_ids]
     return {"modules": modules}
@@ -230,6 +266,7 @@ def delete_question(question_id: int, request: DeleteQuizQuestionRequest):
         raise HTTPException(status_code=404, detail="Question not found")
 
     return {"status": "deleted"}
+
 
 @app.get("/placement-quiz")
 def placement_quiz():
