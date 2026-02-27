@@ -3,7 +3,8 @@ import { saveProfile, findProfileByGhostID } from '../lib/idb-store';
 import type { Profile } from '../types';
 
 interface VaultAccessProps {
-    onAuthenticated: (profile: Profile) => void;
+    onAuthenticated: (profile: Profile, isNew: boolean) => void;
+    onAdminAccess: (adminKey: string) => void;
 }
 
 // ── Helpers (defined outside component to prevent remount on render) ──
@@ -62,14 +63,15 @@ function BackButton({ onClick }: { onClick: () => void }) {
 
 // ── Main component ──
 
-export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
-    const [view, setView] = useState<'landing' | 'create' | 'unlock' | 'restore' | 'created'>('landing');
+export function VaultAccess({ onAuthenticated, onAdminAccess }: VaultAccessProps) {
+    const [view, setView] = useState<'landing' | 'create' | 'unlock' | 'restore' | 'created' | 'admin'>('landing');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [newProfile, setNewProfile] = useState<Profile | null>(null);
+    const [adminKey, setAdminKey] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     function reset() {
@@ -107,7 +109,7 @@ export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
             const profile = await findProfileByGhostID(ghostID);
             if (!profile) { setError('No vault found for these credentials'); setLoading(false); return; }
             await saveProfile(profile);
-            onAuthenticated(profile);
+            onAuthenticated(profile, false);
         } catch { setError('Failed to unlock vault'); }
         finally { setLoading(false); }
     }
@@ -128,7 +130,7 @@ export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
             } else {
                 await saveProfile(profile);
             }
-            onAuthenticated(profile);
+            onAuthenticated(profile, false);
         } catch {
             setError('Invalid or corrupted key file');
         } finally {
@@ -165,8 +167,14 @@ export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
                         Restore from key file
                     </button>
                 </div>
+                <div className="mt-8 pt-6 border-t border-stone-100">
+                    <button onClick={() => setView('admin')}
+                            className="w-full py-2.5 text-xs text-stone-400 hover:text-stone-600 transition-colors font-medium">
+                        Admin access
+                    </button>
+                </div>
                 <p style={{ fontFamily: "'DM Mono', monospace" }}
-                   className="text-center text-xs text-stone-300 mt-10 font-light">
+                   className="text-center text-xs text-stone-300 mt-4 font-light">
                     identity never leaves this device
                 </p>
             </Shell>
@@ -201,7 +209,7 @@ export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
                         </svg>
                         Download privacy key
                     </button>
-                    <button onClick={() => onAuthenticated(newProfile)}
+                    <button onClick={() => onAuthenticated(newProfile, true)}
                             className="w-full py-3 text-stone-400 text-sm hover:text-stone-600 transition-colors">
                         Skip for now →
                     </button>
@@ -247,6 +255,47 @@ export function VaultAccess({ onAuthenticated }: VaultAccessProps) {
                    className="text-center text-xs text-stone-300 mt-8">
                     the file never leaves your device
                 </p>
+            </Shell>
+        );
+    }
+
+    // ── Admin Access ──
+    if (view === 'admin') {
+        const handleAdminSubmit = (e: Event) => {
+            e.preventDefault();
+            if (adminKey.trim()) {
+                onAdminAccess(adminKey.trim());
+            }
+        };
+
+        return (
+            <Shell>
+                <BackButton onClick={goBack} />
+                <div className="mb-8">
+                    <h2 className="text-xl font-medium text-stone-900">Admin access</h2>
+                    <p className="text-sm text-stone-400 mt-1">Enter your admin key to continue</p>
+                </div>
+                <form onSubmit={handleAdminSubmit} className="space-y-4">
+                    <div>
+                        <label className={LABEL_CLASS}>Admin key</label>
+                        <input
+                            type="password"
+                            value={adminKey}
+                            onInput={(e) => setAdminKey((e.target as HTMLInputElement).value)}
+                            className={INPUT_CLASS}
+                            placeholder="••••••••"
+                            required
+                            autoFocus
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={!adminKey.trim()}
+                        className="w-full py-3.5 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-2"
+                    >
+                        Enter admin panel
+                    </button>
+                </form>
             </Shell>
         );
     }

@@ -4,6 +4,13 @@ import json
 from .config import DB_PATH
 
 
+def _get_conn():
+    """Open a DB connection with foreign-key enforcement enabled."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 def init_db():
     # Use Path.mkdir so we never get a bare empty-string dirname on Windows
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -53,7 +60,7 @@ def init_db():
 
 def add_module(title: str, topic: str, tier: int, chunk_count: int, compressed_size: int, filename: str) -> int:
     """Insert a module row and return the real AUTOINCREMENT id."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -71,7 +78,7 @@ def add_module(title: str, topic: str, tier: int, chunk_count: int, compressed_s
 
 
 def get_bucket(topic=None, tier=None):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     query = """
@@ -110,7 +117,7 @@ WHERE 1=1
 
 
 def delete_module(module_id: int) -> bool:
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM modules WHERE id=?", (module_id,))
     deleted = cursor.rowcount
@@ -120,7 +127,7 @@ def delete_module(module_id: int) -> bool:
 
 
 def add_quiz_question(module_id, question, options, correct):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute("SELECT id FROM modules WHERE id=?", (module_id,))
@@ -143,7 +150,7 @@ def add_quiz_question(module_id, question, options, correct):
 
 
 def get_quiz(module_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -170,7 +177,7 @@ def get_quiz(module_id):
 
 
 def delete_quiz_question(question_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM quizzes WHERE id=?", (question_id,))
@@ -179,3 +186,45 @@ def delete_quiz_question(question_id):
     conn.close()
 
     return deleted > 0
+
+def get_placement_quiz(questions_per_module: int = 2) -> list[dict]:
+    """
+    Return a shuffled flat list of questions sampled from every module's quiz.
+    Picks up to `questions_per_module` questions per module (uses however many
+    exist if the module has fewer). Each question carries its source module_id
+    so the client can score per-module and decide which modules to unlock.
+    Only includes questions whose module still exists in the modules table.
+    """
+    import random
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+
+    # JOIN ensures we only get questions for modules that still exist
+    cursor.execute("""
+        SELECT DISTINCT q.module_id
+        FROM quizzes q
+        INNER JOIN modules m ON m.id = q.module_id
+        ORDER BY q.module_id ASC
+    """)
+    module_ids = [row[0] for row in cursor.fetchall()]
+
+    result = []
+    for module_id in module_ids:
+        cursor.execute(
+            "SELECT id, question, options, correct FROM quizzes WHERE module_id=? ORDER BY RANDOM() LIMIT ?",
+            (module_id, questions_per_module),
+        )
+        rows = cursor.fetchall()
+        for r in rows:
+            result.append({
+                "id": r[0],
+                "module_id": module_id,
+                "question": r[1],
+                "options": json.loads(r[2]),
+                "correct": r[3],
+            })
+
+    conn.close()
+    random.shuffle(result)
+    return result

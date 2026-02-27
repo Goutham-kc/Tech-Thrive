@@ -10,6 +10,7 @@ interface QuizQuestion {
 }
 
 interface QuizProps {
+    profileId: string;
     moduleId: string;
     topic: string;
     tier: number;
@@ -24,7 +25,7 @@ const TIER_LABELS: Record<number, string> = {
     3: 'Advanced',
 };
 
-export function Quiz({ moduleId, topic, tier, questions, onComplete, onBack }: QuizProps) {
+export function Quiz({ moduleId, topic, tier, questions, onComplete, onBack, profileId }: QuizProps) {
     const [current, setCurrent] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
     const [confirmed, setConfirmed] = useState(false);
@@ -59,6 +60,7 @@ export function Quiz({ moduleId, topic, tier, questions, onComplete, onBack }: Q
                 const orderedCatalog: any[] = catalogData.modules ?? [];
 
                 const result = await saveProgress(
+                    profileId,
                     moduleId,
                     correctCount,
                     questions.length,

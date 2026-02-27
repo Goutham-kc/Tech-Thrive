@@ -82,11 +82,11 @@ export function DemoPanel({ profile, catalog = [], onClose }: DemoPanelProps) {
     const total    = progress.length;
     const passed   = progress.filter(p => p.passed).length;
     const accuracy = total
-        ? Math.round(
-            (progress.reduce((s, p) => s + p.correct, 0) /
-             progress.reduce((s, p) => s + p.total,   0)) * 100
-          )
-        : 0;
+    ? Math.min(100, Math.round(
+        (progress.reduce((s, p) => s + p.correct, 0) /
+         progress.reduce((s, p) => s + p.total,   0)) * 100
+      ))
+    : 0;    
 
     // Bandwidth — use session totals for cards (survive panel reopen)
     const sessionReqB  = totals.reqBytes;

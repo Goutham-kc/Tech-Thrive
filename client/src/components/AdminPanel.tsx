@@ -40,11 +40,12 @@ const EMPTY_QUESTION = (): Question => ({ question: '', options: ['', '', '', ''
 
 interface AdminPanelProps {
     onClose: () => void;
+    initialAdminKey?: string;
 }
 
-export function AdminPanel({ onClose }: AdminPanelProps) {
-    const [adminKey, setAdminKey] = useState('');
-    const [authed, setAuthed] = useState(false);
+export function AdminPanel({ onClose, initialAdminKey }: AdminPanelProps) {
+    const [adminKey, setAdminKey] = useState(initialAdminKey ?? '');
+    const [authed, setAuthed] = useState(!!initialAdminKey);
     const [authError, setAuthError] = useState('');
     const [activeTab, setActiveTab] = useState<AdminTab>('modules');
 

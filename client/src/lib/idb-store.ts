@@ -1,11 +1,13 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Profile, Progress, WeakModule, Module, StorageStats, TopicUnlock } from '../types';
+import type { Profile, Progress, WeakModule, Module, StorageStats } from '../types';
 
 const DB_NAME = 'GhostLearn';
-// v3: replaces topicUnlocks with moduleUnlocks (flat per-module progression)
-const DB_VERSION = 3;
+// v4: moduleUnlocks keyed by "profileId:moduleId" so each vault is independent.
+//     Also adds placementDone store to track per-profile placement test state.
+// v5: adds profileId index on progress store for per-profile queries.
+const DB_VERSION = 5;
 
-// 75% correct required to unlock the next module
+// 75% correct required to unlock the next module in regular quizzes
 export const PASS_THRESHOLD = 0.75;
 
 export async function initDB(): Promise<IDBPDatabase> {
@@ -36,9 +38,21 @@ export async function initDB(): Promise<IDBPDatabase> {
                     autoIncrement: true,
                 });
                 progressStore.createIndex('moduleId', 'moduleId');
+                progressStore.createIndex('profileId', 'profileId');
                 progressStore.createIndex('timestamp', 'timestamp');
                 progressStore.createIndex('passed', 'passed');
                 progressStore.createIndex('date', 'date');
+            }
+
+            // v5: add profileId index to existing progress store
+            if (oldVersion < 5 && db.objectStoreNames.contains('progress')) {
+                const tx = (db as any)._upgradeTransaction;
+                if (tx) {
+                    const store = tx.objectStore('progress');
+                    if (!store.indexNames.contains('profileId')) {
+                        store.createIndex('profileId', 'profileId');
+                    }
+                }
             }
             if (!db.objectStoreNames.contains('weakModules')) {
                 const weakStore = db.createObjectStore('weakModules', {
@@ -48,15 +62,28 @@ export async function initDB(): Promise<IDBPDatabase> {
                 weakStore.createIndex('moduleId', 'moduleId');
                 weakStore.createIndex('resolved', 'resolvedAt');
             }
-            // v2 store — keep for migration compatibility, drop in v3
+
+            // v2→v3 migration: drop old topicUnlocks store
             if (oldVersion < 3 && db.objectStoreNames.contains('topicUnlocks')) {
                 db.deleteObjectStore('topicUnlocks');
             }
-            // v3: flat set of unlocked module IDs (string keys matching catalog id)
-            // The first module in the catalog is always unlocked by default.
-            if (!db.objectStoreNames.contains('moduleUnlocks')) {
-                db.createObjectStore('moduleUnlocks', { keyPath: 'moduleId' });
+
+            // v3→v4 migration: drop unscoped moduleUnlocks, recreate with compound key
+            if (oldVersion < 4 && db.objectStoreNames.contains('moduleUnlocks')) {
+                db.deleteObjectStore('moduleUnlocks');
             }
+
+            // v4: moduleUnlocks keyed by "profileId:moduleId"
+            if (!db.objectStoreNames.contains('moduleUnlocks')) {
+                const unlockStore = db.createObjectStore('moduleUnlocks', { keyPath: 'key' });
+                unlockStore.createIndex('profileId', 'profileId');
+            }
+
+            // v4: track whether each profile has completed the placement test
+            if (!db.objectStoreNames.contains('placementDone')) {
+                db.createObjectStore('placementDone', { keyPath: 'profileId' });
+            }
+
             console.log(`✅ IndexedDB v${DB_VERSION} ready`);
         },
     });
@@ -123,54 +150,70 @@ export async function getAllModules(): Promise<Module[]> {
 
 // ============ MODULE UNLOCK PROGRESSION ============
 
+function unlockKey(profileId: string, moduleId: string): string {
+    return `${profileId}:${moduleId}`;
+}
+
 /**
- * Seed the very first module as unlocked. Call this after fetching the catalog
- * for the first time so the user always has something to start with.
+ * Seed the very first module as unlocked for this profile.
  */
-export async function seedFirstModule(firstModuleId: string): Promise<void> {
+export async function seedFirstModule(profileId: string, firstModuleId: string): Promise<void> {
     const db = await getDB();
-    const existing = await db.get('moduleUnlocks', firstModuleId);
+    const key = unlockKey(profileId, firstModuleId);
+    const existing = await db.get('moduleUnlocks', key);
     if (!existing) {
-        await db.put('moduleUnlocks', { moduleId: firstModuleId, unlockedAt: Date.now() });
+        await db.put('moduleUnlocks', { key, profileId, moduleId: firstModuleId, unlockedAt: Date.now() });
     }
 }
 
 /**
- * Returns the Set of module IDs the user has unlocked.
+ * Returns the Set of module IDs unlocked for a specific profile.
  */
-export async function getUnlockedModuleIds(): Promise<Set<string>> {
+export async function getUnlockedModuleIds(profileId: string): Promise<Set<string>> {
     const db = await getDB();
-    const all = await db.getAll('moduleUnlocks');
+    const all = await db.transaction('moduleUnlocks').store.index('profileId').getAll(profileId);
     return new Set(all.map((r: any) => String(r.moduleId)));
 }
 
 /**
- * Unlock a specific module by ID.
+ * Unlock a specific module for a specific profile.
  */
-export async function unlockModule(moduleId: string): Promise<void> {
+export async function unlockModule(profileId: string, moduleId: string): Promise<void> {
     const db = await getDB();
-    await db.put('moduleUnlocks', { moduleId: String(moduleId), unlockedAt: Date.now() });
+    const key = unlockKey(profileId, moduleId);
+    await db.put('moduleUnlocks', { key, profileId, moduleId: String(moduleId), unlockedAt: Date.now() });
+}
+
+/**
+ * Unlock multiple modules at once (used after placement quiz).
+ */
+export async function unlockModules(profileId: string, moduleIds: string[]): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction('moduleUnlocks', 'readwrite');
+    await Promise.all(moduleIds.map(moduleId => {
+        const key = unlockKey(profileId, moduleId);
+        return tx.store.put({ key, profileId, moduleId: String(moduleId), unlockedAt: Date.now() });
+    }));
+    await tx.done;
+}
+
+// ============ PLACEMENT TEST ============
+
+export async function hasCompletedPlacement(profileId: string): Promise<boolean> {
+    const db = await getDB();
+    const record = await db.get('placementDone', profileId);
+    return !!record;
+}
+
+export async function markPlacementDone(profileId: string): Promise<void> {
+    const db = await getDB();
+    await db.put('placementDone', { profileId, completedAt: Date.now() });
 }
 
 // ============ PROGRESS ============
 
-/**
- * Persist a quiz result.
- *
- * If the score is ≥ 75%, unlocks the next module in the ordered catalog list
- * and marks the weak module as resolved.
- *
- * @param moduleId        catalog module id (string)
- * @param correct         number of correct answers
- * @param total           total questions
- * @param topic           topic of the module
- * @param tier            tier of the module
- * @param orderedCatalog  full catalog modules array sorted by id ASC (needed to
- *                        find the next module to unlock)
- *
- * Returns { id, passed, unlockedNextModuleId } so the UI can react.
- */
 export async function saveProgress(
+    profileId: string,
     moduleId: string,
     correct: number,
     total: number,
@@ -182,7 +225,7 @@ export async function saveProgress(
     const passed = total > 0 && correct / total >= PASS_THRESHOLD;
 
     const id = await db.add('progress', {
-        moduleId, topic, tier, correct, total, passed,
+        profileId, moduleId, topic, tier, correct, total, passed,
         timestamp: Date.now(),
         date: new Date().toISOString().split('T')[0],
     });
@@ -192,14 +235,13 @@ export async function saveProgress(
     if (passed) {
         await resolveWeakModule(moduleId);
 
-        // Find the next module in the ordered catalog and unlock it
         const currentIndex = orderedCatalog.findIndex(
             (m: any) => String(m.id) === String(moduleId)
         );
         if (currentIndex !== -1 && currentIndex + 1 < orderedCatalog.length) {
             const nextModule = orderedCatalog[currentIndex + 1];
             unlockedNextModuleId = String(nextModule.id);
-            await unlockModule(unlockedNextModuleId);
+            await unlockModule(profileId, unlockedNextModuleId);
         }
     } else {
         await addWeakModule(moduleId);
@@ -211,6 +253,17 @@ export async function saveProgress(
 export async function getAllProgress(): Promise<Progress[]> {
     const db = await getDB();
     return await db.getAll('progress');
+}
+
+export async function getProgressForProfile(profileId: string): Promise<Progress[]> {
+    const db = await getDB();
+    try {
+        return await db.transaction('progress').store.index('profileId').getAll(profileId);
+    } catch {
+        // Index may not exist yet on old DBs — fall back to filtering all records
+        const all = await db.getAll('progress') as Progress[];
+        return all.filter((p: any) => p.profileId === profileId);
+    }
 }
 
 // ============ WEAK MODULES ============

@@ -4,11 +4,10 @@ import type { Profile } from '../types';
 interface StatusBarProps {
     profile: Profile;
     onOpenDemo: () => void;
-    onOpenAdmin: () => void;
     onLogout: () => void;
 }
 
-export function StatusBar({ profile, onOpenDemo, onOpenAdmin, onLogout }: StatusBarProps) {
+export function StatusBar({ profile, onOpenDemo, onLogout }: StatusBarProps) {
     const { online, type } = useConnection();
 
     return (
@@ -40,10 +39,6 @@ export function StatusBar({ profile, onOpenDemo, onOpenAdmin, onLogout }: Status
 
                 <button onClick={onOpenDemo} className="text-xs text-stone-400 hover:text-stone-600 transition-colors font-medium">
                     Demo
-                </button>
-
-                <button onClick={onOpenAdmin} className="text-xs text-stone-400 hover:text-stone-600 transition-colors font-medium">
-                    Admin
                 </button>
 
                 <div className="w-px h-3.5 bg-stone-100" />

@@ -10,6 +10,7 @@ import {
 import type { Profile } from '../types';
 
 interface TopicGridProps {
+    profileId: string;
     onSelectModule: (moduleId: string) => void;
     /** Incremented by parent whenever a quiz is passed so the grid refreshes */
     refreshKey?: number;
@@ -44,7 +45,7 @@ const TIER_COLORS: Record<number, string> = {
     3: 'bg-violet-50 text-violet-700 border-violet-100',
 };
 
-export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
+export function TopicGrid({ profileId, onSelectModule, refreshKey = 0 }: TopicGridProps) {
     const [catalog, setCatalog] = useState<any[]>([]);
     const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
@@ -67,10 +68,10 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
 
             // Ensure the first module is always unlocked for new users
             if (modules.length > 0) {
-                await seedFirstModule(String(modules[0].id));
+                await seedFirstModule(profileId, String(modules[0].id));
             }
 
-            const unlocked = await getUnlockedModuleIds();
+            const unlocked = await getUnlockedModuleIds(profileId);
 
             setCatalog(modules);
             setUnlockedIds(unlocked);
@@ -78,11 +79,12 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
             // Derive mastery and quiz count from real idb progress — no external lib needed
             const allProgress = await getAllProgress();
             const quizCount = allProgress.length;
-            const mastery = allProgress.length > 0
-                ? Math.round(
-                    (allProgress.reduce((s, p) => s + p.correct, 0) /
-                     allProgress.reduce((s, p) => s + p.total, 0)) * 100
-                  )
+            const totalAnswered = allProgress.reduce((s, p) => s + (p.total ?? 0), 0);
+            const mastery = totalAnswered > 0
+                ? Math.min(100, Math.round(
+                    (allProgress.reduce((s, p) => s + Math.min(p.correct ?? 0, p.total ?? 0), 0) /
+                     totalAnswered) * 100
+                  ))
                 : 0;
             setOverallMastery(mastery);
             setTotalQuizzes(quizCount);
@@ -93,7 +95,7 @@ export function TopicGrid({ onSelectModule, refreshKey = 0 }: TopicGridProps) {
             const cached = await getCatalog();
             if (Array.isArray(cached)) {
                 setCatalog(cached);
-                const unlocked = await getUnlockedModuleIds();
+                const unlocked = await getUnlockedModuleIds(profileId);
                 setUnlockedIds(unlocked);
             }
         } finally {

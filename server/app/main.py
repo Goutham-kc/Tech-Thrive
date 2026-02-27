@@ -6,6 +6,7 @@ from starlette.requests import Request
 from pydantic import BaseModel
 
 from .catalog import (
+    get_placement_quiz,
     init_db, get_bucket, delete_module,
     add_quiz_question, get_quiz, delete_quiz_question,
 )
@@ -229,3 +230,13 @@ def delete_question(question_id: int, request: DeleteQuizQuestionRequest):
         raise HTTPException(status_code=404, detail="Question not found")
 
     return {"status": "deleted"}
+
+@app.get("/placement-quiz")
+def placement_quiz():
+    """
+    Returns 2 randomly sampled questions per module across all modules.
+    Used once at registration to determine starting unlocks.
+    No session token required — the user hasn't completed auth yet.
+    """
+    questions = get_placement_quiz(questions_per_module=2)
+    return {"questions": questions}

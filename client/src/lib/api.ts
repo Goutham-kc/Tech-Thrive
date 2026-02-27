@@ -176,3 +176,9 @@ export async function adminDeleteQuizQuestion(adminKey: string, questionId: numb
     }
     return res.json();
 }
+
+export async function fetchPlacementQuiz() {
+    const res = await apiFetch(`${API_BASE}/placement-quiz`, {}, 'Quiz');
+    if (!res.ok) throw new Error(`Placement quiz fetch failed: ${res.status}`);
+    return res.json(); // { questions: [{id, module_id, question, options, correct}] }
+}

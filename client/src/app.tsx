@@ -1,11 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
-import { getActiveProfile } from "./lib/idb-store";
-import { createSession, fetchQuiz } from "./lib/api";
+import { getActiveProfile, hasCompletedPlacement, seedFirstModule } from "./lib/idb-store";
+import { createSession, fetchQuiz, fetchPlacementQuiz, fetchCatalog } from "./lib/api";
 import { VaultAccess } from "./components/VaultAccess";
 import { StatusBar } from "./components/StatusBar";
 import { TopicGrid } from "./components/TopicGrid";
 import { ModuleView } from "./components/ModuleView";
 import { Quiz } from "./components/Quiz";
+import { PlacementQuiz } from "./components/PlacementQuiz";
 import { DemoPanel } from "./components/DemoPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import type { Profile } from "./types";
@@ -13,40 +14,80 @@ import type { Profile } from "./types";
 type Screen =
     | { name: 'grid' }
     | { name: 'module'; moduleId: string; token: string }
-    | { name: 'quiz'; moduleId: string; topic: string; tier: number; questions: any[] };
+    | { name: 'quiz'; moduleId: string; topic: string; tier: number; questions: any[] }
+    | { name: 'placement'; questions: any[]; catalog: any[] };
 
 export default function App() {
-    const [profile, setProfile] = useState<Profile | null>(null);
-    const [authLoading, setAuthLoading] = useState(true);
-    const [screen, setScreen] = useState<Screen>({ name: 'grid' });
-    const [showDemo, setShowDemo] = useState(false);
-    const [showAdmin, setShowAdmin] = useState(false);
+    const [profile, setProfile]           = useState<Profile | null>(null);
+    const [authLoading, setAuthLoading]   = useState(true);
+    const [screen, setScreen]             = useState<Screen>({ name: 'grid' });
+    const [showDemo, setShowDemo]         = useState(false);
+    const [showAdmin, setShowAdmin]       = useState(false);
+    const [adminKey, setAdminKey]         = useState<string>('');
     const [sessionToken, setSessionToken] = useState<string>('');
-    /**
-     * Bump this whenever the user passes a quiz so TopicGrid re-runs its
-     * catalog + unlock fetch and reveals the newly unlocked module.
-     */
     const [gridRefreshKey, setGridRefreshKey] = useState(0);
 
     useEffect(() => {
-        getActiveProfile().then(p => {
-            if (p) setProfile(p);
+        getActiveProfile().then(async p => {
+            if (p) {
+                setProfile(p);
+                // Returning user — check if they still need placement
+                const done = await hasCompletedPlacement(p.id);
+                if (!done) {
+                    await startPlacement(p);
+                }
+            }
             setAuthLoading(false);
         });
     }, []);
 
     useEffect(() => {
         if (!profile) return;
-        // Use createSession from api.ts so VITE_API_URL env var is respected
         createSession(profile.ghostID)
             .then(token => setSessionToken(token))
             .catch(() => {});
     }, [profile]);
 
+    async function startPlacement(p: Profile) {
+        try {
+            const [quizData, catalogData] = await Promise.all([
+                fetchPlacementQuiz(),
+                fetchCatalog(),
+            ]);
+            const questions = quizData.questions ?? [];
+            const catalog   = catalogData.modules ?? [];
+
+            if (questions.length === 0) {
+                // No quiz questions configured yet — skip placement, just unlock module 1
+                if (catalog.length > 0) {
+                    await seedFirstModule(p.id, String(catalog[0].id));
+                }
+                return;
+            }
+            setScreen({ name: 'placement', questions, catalog });
+        } catch {
+            // Server unreachable — fall through to grid, unlock module 1 defensively
+            // TopicGrid.seedFirstModule will handle it on load
+        }
+    }
+
+    async function handleAuthenticated(p: Profile, isNew: boolean) {
+        setProfile(p);
+        if (isNew) {
+            await startPlacement(p);
+        }
+    }
+
+    function handleAdminAccess(key: string) {
+        setAdminKey(key);
+        setShowAdmin(true);
+    }
+
     function handleLogout() {
         localStorage.removeItem('activeProfile');
         setProfile(null);
         setSessionToken('');
+        setAdminKey('');
         setScreen({ name: 'grid' });
         setShowDemo(false);
         setShowAdmin(false);
@@ -70,11 +111,6 @@ export default function App() {
         }
     }
 
-    /**
-     * Called by Quiz when the user finishes.
-     * If they passed, bump the refresh key so TopicGrid re-reads moduleUnlocks
-     * and reveals the newly unlocked card.
-     */
     function handleQuizComplete(
         _correct: number,
         _total: number,
@@ -84,6 +120,11 @@ export default function App() {
         if (passed && unlockedNextModuleId) {
             setGridRefreshKey(k => k + 1);
         }
+        setScreen({ name: 'grid' });
+    }
+
+    function handlePlacementComplete() {
+        setGridRefreshKey(k => k + 1);
         setScreen({ name: 'grid' });
     }
 
@@ -100,7 +141,24 @@ export default function App() {
     }
 
     if (!profile) {
-        return <VaultAccess onAuthenticated={setProfile} />;
+        return (
+            <>
+                <VaultAccess onAuthenticated={handleAuthenticated} onAdminAccess={handleAdminAccess} />
+                {showAdmin && <AdminPanel onClose={() => { setShowAdmin(false); setAdminKey(''); }} initialAdminKey={adminKey} />}
+            </>
+        );
+    }
+
+    // Placement screen takes over the full viewport (no StatusBar)
+    if (screen.name === 'placement') {
+        return (
+            <PlacementQuiz
+                profileId={profile.id}
+                questions={screen.questions}
+                catalog={screen.catalog}
+                onComplete={handlePlacementComplete}
+            />
+        );
     }
 
     return (
@@ -108,13 +166,13 @@ export default function App() {
             <StatusBar
                 profile={profile}
                 onOpenDemo={() => setShowDemo(true)}
-                onOpenAdmin={() => setShowAdmin(true)}
                 onLogout={handleLogout}
             />
 
             <main className="flex-1">
                 {screen.name === 'grid' && (
                     <TopicGrid
+                        profileId={profile.id}
                         onSelectModule={handleSelectModule}
                         refreshKey={gridRefreshKey}
                     />
@@ -134,6 +192,7 @@ export default function App() {
                         tier={screen.tier}
                         questions={screen.questions}
                         onComplete={handleQuizComplete}
+                        profileId={profile.id}
                         onBack={() =>
                             setScreen({
                                 name: 'module',
@@ -146,7 +205,7 @@ export default function App() {
             </main>
 
             {showDemo && <DemoPanel profile={profile} onClose={() => setShowDemo(false)} />}
-            {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+            {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} initialAdminKey={adminKey} />}
         </div>
     );
 }
